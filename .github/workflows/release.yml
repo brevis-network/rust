@@ -1,0 +1,91 @@
+name: release
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - { os: macos-latest, triple: aarch64-apple-darwin }
+          - { os: ubuntu-latest, triple: x86_64-unknown-linux-gnu }
+    runs-on: ${{ matrix.config.os }}
+    steps:
+      - name: Install nightly toolchain
+        id: rustc-toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly-2025-08-04
+          default: true
+
+      - uses: lukka/get-cmake@v3.27.4
+
+      - name: Cache Rust build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: rust-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Cache LLVM
+        uses: actions/cache@v4
+        with:
+          path: rust/obj/llvm
+          key: llvm-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            llvm-${{ runner.os }}-
+
+      - name: Show rust version
+        run: |
+          cargo version
+          rustup toolchain list
+
+      - name: Checkout pico-rust
+        uses: actions/checkout@v4
+        with:
+          submodules: "recursive"
+          path: rust
+
+      - name: Configure Rust build
+        run: |
+          ./configure \
+            --set change-id="ignore" \
+            --target "${{ matrix.config.triple }},riscv64im-pico-zkvm-elf" \
+            --tools "cargo,rustfmt" \
+            --set rust.lld \
+            --set rust.llvm-tools \
+            --set llvm.download-ci-llvm=false \
+            --set build.optimized-compiler-builtins=false
+        working-directory: rust
+
+      - name: Build
+        run: |
+          export GITHUB_ACTIONS=false
+          ./x.py build --stage 2
+        working-directory: rust
+
+      - name: Archive
+        run: tar -czvf rust-toolchain-${{ matrix.config.triple }}.tar.gz rust/build/host/stage2
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(echo ${{ github.sha }} | cut -c1-7)" >> $GITHUB_OUTPUT
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: pico-${{ steps.sha.outputs.short }}
+          name: "Rust Toolchain - pico-${{ steps.sha.outputs.short }}"
+          prerelease: true
+          files: |
+              rust-toolchain-${{ matrix.config.triple }}.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
