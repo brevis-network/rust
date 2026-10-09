@@ -10,11 +10,17 @@ jobs:
       fail-fast: false
       matrix:
         config:
-          - { os: macos-latest, triple: aarch64-apple-darwin }
+          - { os: macos-15, triple: aarch64-apple-darwin }
           # 22.04, not latest: the toolchain links against the runner's glibc, and 2.35 is the floor
           # the Linux asset promises (ubuntu-latest's 2.39 build would not start on a 22.04 host).
           - { os: ubuntu-22.04, triple: x86_64-unknown-linux-gnu }
     runs-on: ${{ matrix.config.os }}
+    env:
+      # What the macOS asset's binaries require. Unset, the cmake-built ones (LLVM, rust-lld) take
+      # the runner's own macOS: the pico-8bd1f45 rust-lld needs 15.5, the image it was built on.
+      # 11.0 is rustc's own floor for aarch64-apple-darwin, and what rust-lang's dist builds use.
+      # Linux ignores it.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
     steps:
       - uses: lukka/get-cmake@v3.27.4
 
