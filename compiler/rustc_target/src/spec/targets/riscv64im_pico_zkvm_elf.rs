@@ -26,7 +26,8 @@ pub(crate) fn target() -> Target {
             max_atomic_width: Some(64),
             atomic_cas: true,
 
-            features: "+m".into(),
+            // The VM executes misaligned loads and stores, so all code here, std too, may use them.
+            features: "+m,+unaligned-scalar-mem".into(),
             llvm_abiname: LlvmAbi::Lp64,
             executables: true,
             panic_strategy: PanicStrategy::Abort,
